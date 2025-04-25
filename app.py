@@ -76,7 +76,8 @@ def initialize_session_state():
         'vector_store': None,
         'embedding_processor': None,
         'document_processor': None,
-        'rag_pipeline': None
+        'rag_pipeline': None,
+        'documents_loaded_from_qdrant': False # Flag to track if we've loaded docs from Qdrant
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -85,6 +86,99 @@ def initialize_session_state():
 
 # Call initialization function
 initialize_session_state()
+
+# --- Helper Function to Load Indexed Documents from Qdrant ---
+def load_indexed_documents_from_qdrant():
+    """Load indexed documents from Qdrant to populate the UI."""
+    if st.session_state.get('documents_loaded_from_qdrant', False):
+        logger.debug("Documents already loaded from Qdrant, skipping.")
+        return
+    
+    vector_store = get_component('vector_store')
+    if not vector_store:
+        logger.warning("Cannot load documents from Qdrant: Vector store not initialized.")
+        return
+    
+    try:
+        # Check if collection exists and has documents
+        collection_name = vector_store.collection_name
+        if not vector_store.client.collection_exists(collection_name=collection_name):
+            logger.info(f"Collection '{collection_name}' does not exist yet. No documents to load.")
+            return
+        
+        # Get document count
+        count_result = vector_store.client.count(collection_name=collection_name)
+        if count_result.count == 0:
+            logger.info("No documents found in Qdrant collection.")
+            return
+        
+        logger.info(f"Found {count_result.count} points in Qdrant. Retrieving document information...")
+        
+        # Extract unique document names and count chunks per document
+        doc_chunks = {}
+        
+        # Use scroll with pagination to handle large collections
+        limit = 100  # Limit per batch
+        offset = None  # Start with no offset
+        total_processed = 0
+        max_points = 1000  # Set a reasonable limit to avoid processing millions of points
+        
+        while total_processed < min(count_result.count, max_points):
+            # Get a batch of points
+            scroll_result = vector_store.client.scroll(
+                collection_name=collection_name,
+                limit=limit,
+                offset=offset,  # Pass the offset for pagination
+                with_payload=True,
+                with_vectors=False  # Don't need vectors
+            )
+            
+            points = scroll_result[0]  # First element is list of points
+            next_offset = scroll_result[1]  # Second element is next offset
+            
+            if not points:
+                logger.info("No more points to process.")
+                break
+                
+            # Process this batch of points
+            for point in points:
+                if hasattr(point, 'payload') and point.payload:
+                    source = point.payload.get('source', 'Unknown')
+                    if source in doc_chunks:
+                        doc_chunks[source] += 1
+                    else:
+                        doc_chunks[source] = 1
+            
+            total_processed += len(points)
+            logger.debug(f"Processed {total_processed} points so far.")
+            
+            # Update offset for next iteration
+            offset = next_offset
+            
+            # If no more offset, we've reached the end
+            if offset is None:
+                break
+        
+        # Create document info entries for the UI
+        for doc_name, chunk_count in doc_chunks.items():
+            # Skip documents already in the list (as might happen if user uploads new documents)
+            if any(doc_info['name'] == doc_name for doc_info in st.session_state.uploaded_files_info):
+                continue
+                
+            doc_unique_id = str(uuid.uuid4())
+            st.session_state.uploaded_files_info.append({
+                "id": doc_unique_id,
+                "name": doc_name,
+                "status": "processed",
+                "chunks": chunk_count,
+                "source": "qdrant"  # Mark as loaded from storage
+            })
+        
+        logger.info(f"Loaded information for {len(doc_chunks)} documents from Qdrant.")
+        st.session_state.documents_loaded_from_qdrant = True
+        
+    except Exception as e:
+        logger.error(f"Error loading documents from Qdrant: {e}", exc_info=True)
 
 # --- Helper Function to Initialize Core Components ---
 # Lazily initializes components and stores them in session state
@@ -150,6 +244,12 @@ col1, col2, col3 = st.columns([1, 2, 1]) # Document Management | Query/Response 
 with col1:
     st.header("📚 Documents")
     with st.container(border=True):
+        # Load indexed documents from Qdrant on startup
+        vector_store = get_component('vector_store')
+        if vector_store and not st.session_state.get('documents_loaded_from_qdrant', False):
+            with st.spinner("Loading indexed documents..."):
+                load_indexed_documents_from_qdrant()
+        
         # File Uploader
         uploaded_files = st.file_uploader(
             "Upload Files (PDF, DOCX, TXT, MD, HTML, EPUB)",
@@ -420,28 +520,57 @@ with col1:
                 logger.warning(f"Failed to get vector count: {e}", exc_info=True)
 
         # --- Clear Documents Button ---
-        if st.button("⚠️ Clear All Documents", key="clear_docs"):
+        # Initialize the confirmation state if it doesn't exist
+        if 'clear_confirmation' not in st.session_state:
+            st.session_state.clear_confirmation = False
+            
+        # First button: Request confirmation
+        if not st.session_state.clear_confirmation:
+            if st.button("⚠️ Clear All Documents", key="clear_docs_request"):
+                st.session_state.clear_confirmation = True
+                st.rerun()  # Rerun to show the confirmation UI
+        # Confirmation state is active
+        else:
             st.warning("This will delete all indexed data. Are you sure?")
-            if st.button("Yes, Clear Everything"):
-                vector_store = get_component('vector_store')
-                if vector_store:
-                    try:
-                        with st.spinner("Clearing vector store..."):
-                            vector_store.clear_collection() # Deletes and recreates
-                        st.success("Vector store collection cleared and reset successfully.")
-                        logger.info("Vector store collection cleared.")
-                        # Reset relevant session state
-                        st.session_state.uploaded_files_info = []
-                        st.session_state.messages = []
-                        st.session_state.response_text = ""
-                        st.session_state.relevance_info = []
-                        st.session_state.processing_status = "Ready"
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error clearing vector store: {str(e)}")
-                        logger.error(f"Error clearing vector store: {e}", exc_info=True)
-                else:
-                    st.error("Vector store component not available.")
+            
+            col1_confirm, col2_confirm = st.columns(2)
+            
+            with col1_confirm:
+                if st.button("Yes, Clear Everything", key="clear_docs_confirm"):
+                    vector_store = get_component('vector_store')
+                    if vector_store:
+                        try:
+                            with st.spinner("Clearing vector store..."):
+                                # Force a complete recreation of the collection
+                                vector_store.clear_collection()
+                                
+                            st.success("Vector store collection cleared and reset successfully.")
+                            logger.info("Vector store collection cleared.")
+                            
+                            # Reset relevant session state
+                            st.session_state.uploaded_files_info = []
+                            st.session_state.messages = []
+                            st.session_state.response_text = ""
+                            st.session_state.relevance_info = []
+                            st.session_state.processing_status = "Ready"
+                            st.session_state.documents_loaded_from_qdrant = False # Reset this flag too
+                            st.session_state.clear_confirmation = False  # Reset confirmation state
+                            
+                            # Force a rerun to update the UI
+                            time.sleep(0.5)  # Small delay to ensure changes are processed
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error clearing vector store: {str(e)}")
+                            logger.error(f"Error clearing vector store: {e}", exc_info=True)
+                            st.session_state.clear_confirmation = False  # Reset on error
+                    else:
+                        st.error("Vector store component not available.")
+                        st.session_state.clear_confirmation = False  # Reset on error
+            
+            with col2_confirm:
+                if st.button("No, Cancel", key="clear_docs_cancel"):
+                    st.session_state.clear_confirmation = False
+                    st.rerun()
 
 # --- Column 2: Query Interface & Response ---
 with col2:

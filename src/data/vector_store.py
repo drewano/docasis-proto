@@ -236,16 +236,58 @@ class VectorStore:
         """
         logger.warning(f"Attempting to clear all data from collection '{self.collection_name}' by recreating it.")
         try:
-            # Delete the collection with timeout augmenté
-            self.client.delete_collection(collection_name=self.collection_name, timeout=120)
+            # First check if collection exists
+            if not self.client.collection_exists(collection_name=self.collection_name):
+                logger.info(f"Collection '{self.collection_name}' does not exist, creating new collection.")
+                return self.create_collection()
+            
+            # Delete the collection with increased timeout
+            self.client.delete_collection(
+                collection_name=self.collection_name, 
+                timeout=180  # Increased timeout to 3 minutes for more reliable deletion
+            )
             logger.info(f"Successfully deleted collection '{self.collection_name}'.")
             
-            # Short pause before recreating might be beneficial in some distributed scenarios
-            time.sleep(1) 
-
-            # Recreate the collection
-            self.create_collection()
-            logger.info(f"Successfully recreated collection '{self.collection_name}'.")
+            # Verify the collection was actually deleted
+            attempt = 0
+            max_attempts = 3
+            while attempt < max_attempts:
+                try:
+                    if not self.client.collection_exists(collection_name=self.collection_name):
+                        logger.info(f"Verified collection '{self.collection_name}' was deleted.")
+                        break
+                    else:
+                        logger.warning(f"Collection '{self.collection_name}' still exists after deletion attempt {attempt + 1}.")
+                        time.sleep(2 * (attempt + 1))  # Exponential backoff
+                except Exception as check_e:
+                    logger.warning(f"Error checking collection existence after deletion: {check_e}")
+                    time.sleep(2)
+                attempt += 1
+            
+            # Pause before recreating
+            time.sleep(2) 
+            
+            # Recreate the collection with retry logic
+            retry_attempts = 0
+            max_retry = 3
+            last_error = None
+            
+            while retry_attempts < max_retry:
+                try:
+                    self.create_collection()
+                    logger.info(f"Successfully recreated collection '{self.collection_name}' on attempt {retry_attempts + 1}.")
+                    return True
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"Attempt {retry_attempts + 1} to recreate collection failed: {e}")
+                    retry_attempts += 1
+                    time.sleep(2 * retry_attempts)  # Exponential backoff
+            
+            # If we got here, all retries failed
+            if last_error:
+                logger.error(f"Failed to recreate collection after {max_retry} attempts: {last_error}")
+                raise RuntimeError(f"Failed to recreate collection after {max_retry} attempts: {last_error}")
+            
             return True
 
         except Exception as e:
@@ -258,7 +300,6 @@ class VectorStore:
             except Exception as recreate_e:
                 logger.error(f"Failed to recreate collection '{self.collection_name}' after clear error: {recreate_e}", exc_info=True)
                 raise RuntimeError(f"Could not clear and recreate collection: {e}") from e
-            raise RuntimeError(f"Could not clear collection fully, but attempted recreation: {e}") from e
 
 # Example usage (for testing or demonstration)
 if __name__ == '__main__':
