@@ -26,12 +26,12 @@ node_modules/
 
 # Task files
 # Task files
-.task/
+.tasks/
 task.json
 task.yaml
 task.yml
 task_data/
-
+tasks/
 
 # Python
 __pycache__/

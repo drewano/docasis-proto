@@ -152,8 +152,20 @@ def main():
                                  point_id = str(uuid.uuid4())
                                  # Ensure metadata is serializable (e.g., convert Path objects to str)
                                  serializable_metadata = {k: str(v) if isinstance(v, Path) else v for k, v in original_chunk.get('metadata', {}).items()}
-                                 # Include 'page_content' or 'text' if needed for display later, store in payload
-                                 serializable_metadata['source_document'] = Path(serializable_metadata.get('source', 'unknown')).name # Store filename
+                                 
+                                 # Override source information with the actual uploaded filename
+                                 # This prevents issues with temporary paths showing as source
+                                 serializable_metadata['source'] = uploaded_file.name
+                                 serializable_metadata['source_document'] = uploaded_file.name
+                                 serializable_metadata['original_name'] = uploaded_file.name
+                                 
+                                 # Preserve the original logic for backwards compatibility
+                                 source_path = serializable_metadata.get('source', '')
+                                 if source_path:
+                                     # Store both full path and just filename
+                                     source_filename = Path(source_path).name
+                                     serializable_metadata['source_path'] = source_path
+                                 
                                  # Optionally store chunk text itself if needed for display without re-retrieval
                                  # serializable_metadata['chunk_text'] = original_chunk.get('content', '')
 
@@ -265,68 +277,82 @@ def main():
     with col2:
         st.header("Query Interface")
         st.markdown("Ask questions about your documents")
+        
+        # Create a container for the chat interface with fixed height
+        chat_container = st.container()
+        
+        # Add user input at the top of the container
+        user_query = st.chat_input("Ask your question:")
+        
+        # Create a scrollable area for messages
+        with chat_container:
+            # Display chat messages from history in a scrollable area
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+                    # Optionally display time or sources here if stored
+                    if "time" in message:
+                        st.caption(f"Response time: {message['time']:.2f}s")
+                    # Source display deferred to col3 (Task 9)
 
-        # Display chat messages from history
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-                # Optionally display time or sources here if stored
-                if "time" in message:
-                    st.caption(f"Response time: {message['time']:.2f}s")
-                # Source display deferred to col3 (Task 9)
-
-        # Accept user input using st.chat_input
-        if user_query := st.chat_input("Ask your question:"):
+        # Process user input (placed after displaying the history)
+        if user_query:
             # Display user message in chat message container
-            with st.chat_message("user"):
-                st.markdown(user_query)
+            with chat_container:
+                with st.chat_message("user"):
+                    st.markdown(user_query)
+            
             # Add user message to chat history
             st.session_state.messages.append({"role": "user", "content": user_query})
 
             # Display assistant response placeholder
-            with st.chat_message("assistant"):
-                message_placeholder = st.empty()
-                message_placeholder.markdown("Thinking...")
-                start_time = time.time()
-                try:
-                    # Ensure pipeline is initialized
-                    if rag_pipeline:
-                        logger.info(f"Sending query to RAG pipeline: {user_query}")
-                        # Assuming rag_pipeline.query returns a dict like {"response": str, "sources": list}
-                        result = rag_pipeline.query(user_query)
-                        response = result.get("response", "Sorry, I couldn't generate a response.")
-                        sources = result.get("sources", []) # Get sources for Task 9
+            with chat_container:
+                with st.chat_message("assistant"):
+                    message_placeholder = st.empty()
+                    message_placeholder.markdown("Thinking...")
+                    start_time = time.time()
+                    try:
+                        # Ensure pipeline is initialized
+                        if rag_pipeline:
+                            logger.info(f"Sending query to RAG pipeline: {user_query}")
+                            # Assuming rag_pipeline.query returns a dict like {"response": str, "sources": list}
+                            result = rag_pipeline.query(user_query)
+                            response = result.get("response", "Sorry, I couldn't generate a response.")
+                            sources = result.get("sources", []) # Get sources for Task 9
+                            end_time = time.time()
+                            duration = end_time - start_time
+                            logger.info(f"RAG pipeline responded in {duration:.2f} seconds.")
+
+                            # Display the actual response
+                            message_placeholder.markdown(response)
+
+                            # Add assistant response to chat history
+                            st.session_state.messages.append({
+                                "role": "assistant",
+                                "content": response,
+                                "time": duration,
+                                "sources": sources # Store sources for Task 9
+                            })
+
+                        else:
+                            logger.error("RAG Pipeline not initialized.")
+                            message_placeholder.error("Error: RAG Pipeline is not available.")
+                            st.session_state.messages.append({"role": "assistant", "content": "Error: RAG Pipeline not available."})
+
+                    except Exception as e:
+                        logger.exception(f"Error during RAG query: {e}")
                         end_time = time.time()
                         duration = end_time - start_time
-                        logger.info(f"RAG pipeline responded in {duration:.2f} seconds.")
-
-                        # Display the actual response
-                        message_placeholder.markdown(response)
-
-                        # Add assistant response to chat history
+                        error_message = f"An error occurred: {e}"
+                        message_placeholder.error(error_message)
                         st.session_state.messages.append({
                             "role": "assistant",
-                            "content": response,
-                            "time": duration,
-                            "sources": sources # Store sources for Task 9
+                            "content": error_message,
+                            "time": duration
                         })
-
-                    else:
-                        logger.error("RAG Pipeline not initialized.")
-                        message_placeholder.error("Error: RAG Pipeline is not available.")
-                        st.session_state.messages.append({"role": "assistant", "content": "Error: RAG Pipeline not available."})
-
-                except Exception as e:
-                    logger.exception(f"Error during RAG query: {e}")
-                    end_time = time.time()
-                    duration = end_time - start_time
-                    error_message = f"An error occurred: {e}"
-                    message_placeholder.error(error_message)
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": error_message,
-                        "time": duration
-                    })
+            
+            # Auto-scroll to bottom by forcing a rerun
+            st.rerun()
     
     # Right panel - Relevance Dashboard
     with col3:
@@ -349,20 +375,46 @@ def main():
             for i, source in enumerate(sources):
                 try:
                     # Adapt based on actual structure of source object/dict
-                    metadata = source.get("metadata", {}) # Langchain stores metadata here usually
-                    score = source.get("score", None) # Qdrant often returns score
-                    content = source.get("page_content", "No content available") # Langchain default content field
+                    metadata = source.metadata if hasattr(source, 'metadata') else source.get("metadata", {})
+                    # Look for score in metadata (where we store it from our RAG pipeline)
+                    score = metadata.get("score", None)
+                    content = source.page_content if hasattr(source, 'page_content') else source.get("page_content", "No content available")
 
-                    source_doc_name = metadata.get('source_document', 'Unknown Source')
-                    page_num = metadata.get('page', 'N/A')
+                    # Get source document name with better fallback options
+                    source_doc_name = metadata.get('source_document', '')
+                    if not source_doc_name:
+                        source_doc_name = metadata.get('file_name', '')
+                    if not source_doc_name:
+                        source_doc_name = metadata.get('source', 'Unknown Source')
+                    
+                    # Get page number with better fallback
+                    page_num = metadata.get('page', metadata.get('chunk_index', 'N/A'))
 
-                    st.markdown(f"**{i+1}. {source_doc_name}** (Page: {page_num})")
+                    # Format the source display more clearly
+                    source_display = f"**Source {i+1}: {source_doc_name}**"
+                    if page_num != 'N/A':
+                        source_display += f" (Page: {page_num})"
+
+                    st.markdown(source_display)
                     
                     # Display score if available
                     if score is not None:
-                        # Use a simple metric or progress bar
-                        st.metric("Relevance Score", f"{score:.3f}")
-                        # st.progress(float(score)) # Assumes score is ~0-1
+                        # Format score as percentage for better user understanding
+                        try:
+                            normalized_score = min(1.0, float(score))
+                            # For cosine similarity, higher is better (closer to 1)
+                            score_percent = int(normalized_score * 100)
+                            
+                            # Display both as metric and visual indicator
+                            col1, col2 = st.columns([1, 2])
+                            with col1:
+                                st.metric("Relevance", f"{score_percent}%")
+                            with col2:
+                                # Add visual indicator
+                                st.progress(normalized_score)
+                        except (ValueError, TypeError):
+                            # Fallback if score cannot be converted
+                            st.metric("Relevance Score", f"{score}")
 
                     # Expander for content
                     with st.expander(f"Show context snippet #{i+1}"):

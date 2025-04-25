@@ -20,7 +20,8 @@ except ImportError as e1:
     try:
         # Tentative avec les chemins 'docling.*' comme fallback (moins probable de fonctionner si e1 a échoué)
         from docling.document_converter import DocumentConverter
-        from docling.chunking import HybridChunker, HierarchicalChunker # L'ancien chemin probable
+        from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
+        from docling_core.transforms.chunker.hierarchical_chunker import HierarchicalChunker
         from docling_core.types.doc.document import DoclingDocument as Document # Reste souvent ici
         logger.debug("Imported Docling components using alternative 'docling.*' paths.")
     except ImportError as e2:

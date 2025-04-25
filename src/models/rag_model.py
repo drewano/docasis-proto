@@ -7,6 +7,7 @@ that orchestrates the retrieval and generation process using LangChain.
 
 import logging
 from typing import List, Dict, Any, Optional
+from pathlib import Path
 
 # LangChain imports
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
@@ -100,10 +101,16 @@ Question: {question}"""
                 if hasattr(doc, 'page_content') and doc.page_content:
                     formatted_docs.append(doc.page_content)
                     logger.debug(f"Added document {i} to context (from page_content): {doc.page_content[:50]}...")
+                    # Log the score if available
+                    if hasattr(doc, 'metadata') and doc.metadata and 'score' in doc.metadata:
+                        logger.debug(f"  Document score: {doc.metadata['score']}")
                 # If that fails, check if it's in the metadata (from Qdrant payload)
                 elif hasattr(doc, 'metadata') and doc.metadata and 'page_content' in doc.metadata:
                     formatted_docs.append(doc.metadata['page_content'])
                     logger.debug(f"Added document {i} to context (from metadata): {doc.metadata['page_content'][:50]}...")
+                    # Log the score if available
+                    if 'score' in doc.metadata:
+                        logger.debug(f"  Document score: {doc.metadata['score']}")
                 else:
                     logger.warning(f"Document {i} has no content in page_content or metadata")
             except (AttributeError, TypeError) as e:
@@ -126,21 +133,45 @@ Question: {question}"""
         Returns:
             Dict containing:
                 - response: Generated response text
-                - sources: List of retrieved source Document objects
+                - sources: List of retrieved source Document objects with relevance scores
         """
         logger.info(f"Processing query: {query_text[:50]}...")
         
-        if not self.retriever:
-             logger.error("Retriever is not initialized.")
+        if not self.qdrant_langchain:
+             logger.error("Vector store wrapper is not initialized.")
              return {"response": "Error: RAG Pipeline not properly initialized.", "sources": []}
 
         try:
-            # Retrieve documents
-            retrieved_docs = self.retriever.invoke(query_text)
-            num_docs = len(retrieved_docs) if retrieved_docs else 0
-            logger.info(f"Retrieved {num_docs} documents for query.")
+            # Retrieve documents with scores instead of using the retriever
+            k = self.config.get('TOP_K_RESULTS', 5)
+            docs_with_scores = self.qdrant_langchain.similarity_search_with_score(query_text, k=k)
             
-            # Log the first few characters of each document for debugging
+            # Process results to include score in each document
+            retrieved_docs = []
+            for doc, score in docs_with_scores:
+                # Add the score to the document's metadata
+                if not hasattr(doc, 'metadata'):
+                    doc.metadata = {}
+                
+                # Ensure score is properly formatted
+                doc.metadata["score"] = float(score)
+                
+                # Ensure source information is properly set with priority to original_name
+                if doc.metadata.get('original_name'):
+                    doc.metadata['source_document'] = doc.metadata['original_name']
+                elif not doc.metadata.get('source_document') and doc.metadata.get('source'):
+                    doc.metadata['source_document'] = Path(doc.metadata['source']).name
+                
+                # Ensure at least some source is set
+                if not doc.metadata.get('source_document') and not doc.metadata.get('source'):
+                    doc.metadata['source_document'] = doc.metadata.get('file_name', 'Unknown Source')
+                
+                retrieved_docs.append(doc)
+            
+            num_docs = len(retrieved_docs)
+            logger.info(f"Retrieved {num_docs} documents with scores for query.")
+            
+            # Log the first few documents with their scores for debugging
             for i, doc in enumerate(retrieved_docs[:3] if retrieved_docs else []):
                 # Try to get content from either page_content or metadata
                 content = ""
@@ -150,7 +181,8 @@ Question: {question}"""
                     content = doc.metadata['page_content'][:100]
                 else:
                     content = "No content found"
-                logger.debug(f"Retrieved doc {i}: {content}...")
+                score = doc.metadata.get("score", "unknown")
+                logger.debug(f"Retrieved doc {i} (score: {score}): {content}...")
             
             if num_docs == 0:
                 logger.warning("No documents retrieved from the vector store. Check if documents are properly stored.")
