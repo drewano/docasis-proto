@@ -1,0 +1,93 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+
+# Dependency directories
+node_modules/
+
+# Environment variables
+.env
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS specific
+.DS_Store
+
+# Task files
+# Task files
+.task/
+task.json
+task.yaml
+task.yml
+task_data/
+
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific
+*.log
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Qdrant
+qdrant_data/
+
+# Streamlit
+.streamlit/secrets.toml 
+tasks/tasks.json
+tasks/task_001.txt
+tasks/task_002.txt
+tasks/task_003.txt
+tasks/task_005.txt
+tasks/task_006.txt
+tasks/task_008.txt
+tasks/task_009.txt
+tasks/task_007.txt
+tasks/task_004.txt
+tasks/task_010.txt
+tasks/tasks.json.bak

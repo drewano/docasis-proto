@@ -1,0 +1,22 @@
+# requirements.txt (Confirmé comme correct)
+langchain>=0.1.0
+langchain-google-genai>=0.0.9
+langchain-community>=0.0.20
+langchain-qdrant>=0.1.0
+qdrant-client>=1.7.0
+streamlit>=1.32.0
+google-generativeai>=0.3.0
+docling>=2.7.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Potentiellement ajouter explicitement si nécessaire, bien que docling devrait les tirer
+torch
+
+sentence-transformers

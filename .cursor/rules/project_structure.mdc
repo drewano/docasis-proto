@@ -1,0 +1,62 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Project Structure
+
+- **Core Application Architecture**
+  - [app.py](mdc:app.py) - Application entry point wrapper
+  - [src/main.py](mdc:src/main.py) - Main application logic and CLI handling
+  - [config/](mdc:config/) - Configuration files and settings
+
+- **Key Directories**
+  - **src/api/** - API clients and integration code
+  - **src/data/** - Data processing, preparation, and management
+  - **src/models/** - RAG models and ML components
+  - **src/ui/** - Streamlit UI interface
+  - **src/utils/** - Helper functions and utilities
+
+- **Development Tools**
+  - **tests/** - Test suite and fixtures
+  - **scripts/** - Utility scripts and automation
+  - **docs/** - Documentation files
+  - **tasks/** - Task Master task definitions
+
+## Entry Points
+
+The application has two primary entry points:
+
+1. **Command Line Interface**
+   ```python
+   # Run with CLI mode (future implementation)
+   python app.py
+   ```
+
+2. **Web UI (Streamlit)**
+   ```python
+   # Launch the Streamlit UI
+   python app.py --ui
+   ```
+
+## Configuration
+
+Configuration is managed through Python files in the `config/` directory:
+
+```python
+# Load configuration
+from src.utils.config import load_config
+config = load_config("config/default.py")
+```
+
+Required configuration includes:
+- Google API credentials
+- Qdrant vector database connection parameters
+
+## Module Dependencies
+
+The application relies on several key dependencies:
+- **Streamlit** - Web UI framework
+- **Qdrant** - Vector database for embeddings storage
+- **Document Processing** - PDF/document handling libraries (e.g., docling)
+- **Google Cloud APIs** - For various AI services

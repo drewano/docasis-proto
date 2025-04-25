@@ -1,0 +1,85 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# RAG Workflow Patterns
+
+- **Document Processing Pipeline**
+  - Document ingestion → Chunking → Embedding generation → Vector storage
+  - Use established processing methods from the `src/data` module
+  
+- **Retrieval Flow**
+  - Query processing → Vector search → Context generation → Model prompting
+
+## Document Processing
+
+When handling document processing, follow this pattern:
+
+```python
+# ✅ DO: Use the document processing pipeline
+from src.data.document_processor import process_document
+
+document = process_document(file_path, chunk_size=512, overlap=50)
+```
+
+```python
+# ❌ DON'T: Implement custom document processing logic
+import docling
+# Avoid custom implementations that duplicate functionality
+```
+
+## Vector Storage
+
+Store and retrieve vectors using the Qdrant client wrapper:
+
+```python
+# ✅ DO: Use the provided Qdrant client wrapper
+from src.data.vector_store import QdrantStore
+
+store = QdrantStore(config.qdrant_url, config.qdrant_api_key)
+store.add_documents(documents)
+results = store.search(query, top_k=5)
+```
+
+## Context Generation
+
+Generate context for LLM prompts using retrieved documents:
+
+```python
+# ✅ DO: Use context formatters
+from src.models.context import format_rag_context
+
+context = format_rag_context(retrieved_documents, max_tokens=3000)
+```
+
+## LLM Integration
+
+Interact with language models using the provided wrappers:
+
+```python
+# ✅ DO: Use the LLM client abstraction
+from src.models.llm import get_llm_client
+
+llm = get_llm_client(config.llm_provider)
+response = llm.complete(
+    prompt=prompt_template,
+    context=context,
+    max_tokens=1000
+)
+```
+
+## Error Handling
+
+Always include appropriate error handling for external services:
+
+```python
+# ✅ DO: Implement proper error handling
+from src.utils.errors import RagError, ModelError
+
+try:
+    results = vector_store.search(query)
+except RagError as e:
+    logger.error(f"Vector search failed: {e}")
+    # Implement fallback strategy
+```

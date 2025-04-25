@@ -1,0 +1,142 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Streamlit UI Conventions
+
+- **Component Organization**
+  - Separate UI layout from business logic
+  - Use modular components for reusable UI elements
+  - Maintain consistent styling throughout the application
+
+## Application Structure
+
+Organize Streamlit applications in this order:
+
+```python
+# ✅ DO: Follow standard Streamlit app structure
+import streamlit as st
+
+# 1. Page configuration and title
+st.set_page_config(
+    page_title="RAG Intelligent Agent",
+    page_icon="📚",
+    layout="wide",
+)
+st.title("RAG Intelligent Agent")
+
+# 2. Sidebar configuration
+with st.sidebar:
+    st.header("Settings")
+    # Sidebar components...
+
+# 3. Main content area
+st.header("Document Processing")
+# Main content components...
+
+# 4. Footer
+st.markdown("---")
+st.caption("RAG Intelligent Agent v1.0")
+```
+
+## State Management
+
+Use Streamlit's session state for managing application state:
+
+```python
+# ✅ DO: Use session state properly
+# Initialize state variables
+if "query_history" not in st.session_state:
+    st.session_state.query_history = []
+
+# Update state
+def add_to_history(query, response):
+    st.session_state.query_history.append({
+        "query": query, 
+        "response": response,
+        "timestamp": datetime.now().strftime("%H:%M:%S")
+    })
+
+# Access state
+if st.session_state.query_history:
+    for item in st.session_state.query_history:
+        st.write(f"Q: {item['query']}")
+        st.write(f"A: {item['response']}")
+```
+
+## UI Components
+
+Create reusable UI components for consistency:
+
+```python
+# ✅ DO: Create reusable UI components
+def document_uploader():
+    """UI component for document uploading."""
+    st.subheader("Upload Documents")
+    uploaded_file = st.file_uploader("Choose a file", type=["pdf", "txt", "docx"])
+    if uploaded_file:
+        return process_upload(uploaded_file)
+    return None
+
+# Use component
+doc = document_uploader()
+```
+
+## Progress Indication
+
+Always show progress for long-running operations:
+
+```python
+# ✅ DO: Show progress for long-running operations
+def process_with_progress(file):
+    """Process a file with progress indicator."""
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    # Setup progress callback
+    def update_progress(progress, status):
+        progress_bar.progress(progress)
+        status_text.text(status)
+    
+    # Process with progress updates
+    try:
+        result = process_document(
+            file, 
+            progress_callback=update_progress
+        )
+        progress_bar.progress(100)
+        status_text.text("Processing complete!")
+        return result
+    except Exception as e:
+        status_text.text(f"Error: {e}")
+        return None
+```
+
+## Error Handling
+
+Use consistent error handling in the UI:
+
+```python
+# ✅ DO: Handle errors gracefully in the UI
+try:
+    results = process_document(uploaded_file)
+    st.success("Document processed successfully!")
+except Exception as e:
+    st.error(f"An error occurred: {str(e)}")
+    st.info("Please try again with a different file or check the logs.")
+```
+
+## User Experience
+
+Consider UX best practices for Streamlit:
+
+```python
+# ✅ DO: Provide clear user guidance
+with st.expander("How to use this tool"):
+    st.markdown("""
+    1. **Upload a document** using the file uploader
+    2. **Ask questions** about the document in the text input
+    3. **View responses** in the main panel
+    """)
+```

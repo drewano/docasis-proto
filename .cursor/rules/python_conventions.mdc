@@ -1,0 +1,133 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Python Coding Conventions
+
+- **Style Guidelines**
+  - Follow PEP 8 style guidelines
+  - Use meaningful variable and function names
+  - Maintain consistent indentation (4 spaces)
+
+- **Docstring Format**
+  - Use Google-style docstrings for functions and classes
+  - Include description, args, returns and raises where applicable
+
+## Import Conventions
+
+Order imports as follows:
+
+```python
+# ✅ DO: Follow import order convention
+# 1. Standard library imports
+import os
+import sys
+from pathlib import Path
+
+# 2. Third-party imports
+import numpy as np
+import pandas as pd
+from qdrant_client import QdrantClient
+
+# 3. Local application imports
+from src.utils.config import load_config
+from src.models.embeddings import get_embeddings
+```
+
+## Function Documentation
+
+Document functions with Google-style docstrings:
+
+```python
+# ✅ DO: Use Google-style docstrings
+def process_document(file_path, chunk_size=512, overlap=50):
+    """Process a document for RAG ingestion.
+    
+    Args:
+        file_path (str): Path to the document file.
+        chunk_size (int, optional): Size of text chunks. Defaults to 512.
+        overlap (int, optional): Overlap between chunks. Defaults to 50.
+        
+    Returns:
+        list: List of processed document chunks.
+        
+    Raises:
+        FileNotFoundError: If document doesn't exist.
+        ProcessingError: If document processing fails.
+    """
+    # Implementation...
+```
+
+## Error Handling
+
+Use custom exception classes and consistent error handling:
+
+```python
+# ✅ DO: Use custom exception classes
+from src.utils.errors import DocumentProcessingError
+
+# Define custom exceptions
+class ProcessingError(DocumentProcessingError):
+    """Raised when document processing fails."""
+    pass
+
+# Use try-except blocks with specific exceptions
+try:
+    process_document(file_path)
+except FileNotFoundError:
+    logger.error(f"Document not found: {file_path}")
+except ProcessingError as e:
+    logger.error(f"Processing failed: {e}")
+```
+
+## Logging
+
+Use the standard logging pattern:
+
+```python
+# ✅ DO: Use consistent logging
+import logging
+
+logger = logging.getLogger(__name__)
+
+def some_function():
+    logger.debug("Detailed information for debugging")
+    logger.info("General information about progress")
+    logger.warning("Warning about potential issues")
+    logger.error("Error that doesn't crash the application")
+    logger.critical("Critical error that might crash the application")
+```
+
+## Configuration Handling
+
+Access configuration using the standard pattern:
+
+```python
+# ✅ DO: Use the configuration pattern
+from src.utils.config import load_config
+
+config = load_config("path/to/config.py")
+api_key = config.api_key
+```
+
+## Testing
+
+Write tests using pytest with descriptive function names:
+
+```python
+# ✅ DO: Use descriptive test function names and pytest fixtures
+import pytest
+
+@pytest.fixture
+def sample_document():
+    """Create a sample document for testing."""
+    return {
+        "text": "Sample document text",
+        "metadata": {"source": "test"}
+    }
+
+def test_document_processing_correctly_chunks_text(sample_document):
+    """Test that document processing correctly chunks the text."""
+    # Test implementation...
+```
