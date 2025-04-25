@@ -16,7 +16,7 @@ A Retrieval-Augmented Generation (RAG) system that enhances the capabilities of 
 - **RAG Framework**: LangChain
 - **Vector Database**: Qdrant Cloud
 - **Document Processing**: Docling
-- **LLM**: Google Gemini Flash (version 20)
+- **LLM**: Google Gemini Flash (version 2.0)
 - **Embeddings**: Google text-embedding-004
 - **UI**: Streamlit
 
